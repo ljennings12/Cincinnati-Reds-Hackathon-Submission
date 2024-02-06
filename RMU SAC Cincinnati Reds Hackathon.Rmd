@@ -1,0 +1,434 @@
+---
+title: "Cincinnati Reds Hackathon R Notebook"
+output: html_notebook
+name: "Liam Jennings, Adam Gehr, Josh Knapp, Brogan Berkey"
+---
+
+## Libraries
+```{r}
+if(!require('tidyverse') & !require('rpart') & !require('rpart.plot') & 
+   !require('MASS') & !require('caret') & !require('tibble')) {
+  install.packages('tidyverse')
+  library('tidyverse')
+  install.packages('rpart')
+  library('rpart')
+  install.packages('rpart.plot')
+  library('rpart.plot')
+  install.packages('MASS')
+  library('MASS')
+  install.packages('caret')
+  library('caret')
+  install.packages('tibble')
+  library('tibble')
+}
+```
+
+
+## Read in data
+```{r}
+fangraphs <- read.csv("fangraphs_season_level.csv")
+savant <- read.csv("savant_pitch_level.csv")
+```
+
+
+Base Dataset
+```{r}
+## Create a base stats dataset
+baseStats <- fangraphs %>% 
+  filter(IP > 10) %>%
+  dplyr::select(NameASCII, Throws, Age, Role, G, GS, IP, TBF, W, L, SV, BS, HLD, SD, MD, Pulls, ERA) %>% 
+  mutate(ERA = round(ERA, 2))
+
+## Summary of Innings Pitched
+summary(baseStats %>%
+          filter(Role == "RP") %>%
+          dplyr::select(IP))
+```
+
+
+## Data Clean
+
+Create names variable to match Savant format
+```{r}
+name <- str_split_fixed(fangraphs$NameASCII, " ", n = 2)
+last_name_first_name <- paste(as.character(name[(nrow(fangraphs) + 1):(nrow(fangraphs) * 2)]), ",", 
+                              as.character(name[1:(nrow(fangraphs))]))
+last_name_first_name <- gsub("+ , ", ", ", last_name_first_name)
+```
+
+Add Baseball Savant name to fangraphs
+```{r}
+fan1 <- fangraphs %>%
+  dplyr::select(NameASCII, Throws, Role, Season, IP, K_pct, BB_pct, BABIP, LOB_pct, GB_pct, LD_pct, GB_to_FB, 
+         FIP, xFIP, EV, LA, Barrel_pct, Hard_pct) %>% 
+  mutate(FIP = round(FIP, 2), 
+         xFIP = round(xFIP, 2),
+         savant_name = last_name_first_name)
+```
+
+Recode all pitchers with an accent or middle initial to match Savant
+```{r}
+fan2 <- fan1 %>%
+  mutate(savant_name_full = recode(savant_name, "Alvarado, Jose" = "Alvarado, José",
+                                   "Feliz, Neftali" = "Feliz, Neftalí", "Chacin, Jhoulys" = "Chacín, Jhoulys",
+                                   "Perez, Francisco" = "Pérez, Francisco", "Sanchez, Cristopher" = "Sánchez, Cristopher",
+                                   "Luzardo, Jesus" = "Luzardo, Jesús", "Cabrera, Genesis" = "Cabrera, Génesis",
+                                   "Cabrera, Asdrubal" = "Cabrera, Asdrúbal", "Suarez, Jose" = "Suarez, José",
+                                   "Suarez, Ranger" = "Suárez, Ranger", "Gonzalez, Victor" = "González, Victor",
+                                   "Baez, Pedro" = "Báez, Pedro", "Cisnero, Jose" = "Cisnero, José", 
+                                   "Rodon, Carlos" = "Rodón, Carlos", "Urias, Julio" = "Urías, Julio",
+                                   "Fernandez, Julian" = "Fernández, Julian", "Fernandez, Junior" = "Fernández, Junior",
+                                   "Quintana, Jose" = "Quintana, José", "Bolanos, Ronald" = "Bolaños, Ronald",
+                                   "Diaz, Miguel" = "Díaz, Miguel", "Sanchez, Miguel" = "Sánchez, Miguel",
+                                   "Perez, Martin" = "Pérez, Martín", "Nunez, Darien" = "Núñez, Darien",
+                                   "Santiago, Hector" = "Santiago, Héctor", "Colome, Alex" = "Colomé, Alex",
+                                   "Urquidy, Jose" = "Urquidy, José", "Diplan, Marcos" = "Diplán, Marcos",
+                                   "Dominguez, Seranthony" = "Domínguez, Seranthony", "Perez, Eury" = "Pérez, Eury",
+                                   "Butto, Jose" = "Butto, José", "Patino, Luis" = "Patiño, Luis", 
+                                   "Vasquez, Randy" = "Vásquez, Randy", "Hernandez, Carlos" = "Hernández, Carlos",
+                                   "Rodriguez, Yerry" = "Rodríguez, Yerry", "Jimenez, Dany" = "Jiménez, Dany",
+                                   "Martinez, Adrian" = "Martínez, Adrián", "German, Domingo" = "Germán, Domingo",
+                                   "Lopez, Pablo" = "López, Pablo", "De Leon, Jose" = "De León, José",
+                                   "Marquez, German" = "Márquez, Germán", "Pagan, Emilio" = "Pagán, Emilio",
+                                   "Ruiz, Jose" = "Ruiz, José", "Urena, Jose" = "Ureña, José", "Ramirez, Erasmo" = "Ramírez, Erasmo",
+                                   "Garcia, Rony" = "García, Rony", "Valdez, Cesar" = "Valdez, César", 
+                                   "Munoz, Andres" = "Muñoz, Andrés", "Rodriguez, Manuel" = "Rodríguez, Manuel",
+                                   "Garcia, Yimi" = "García, Yimi", "Diaz, Alexis" = "Díaz, Alexis", "Ramirez, Noe" = "Ramirez, Noé",
+                                   "Rondon, Angel" = "Rondón, Angel", "Garcia, Robel" = "García, Robel", 
+                                   "Rodriguez, Dereck" = "Rodríguez, Dereck", "Leclerc, Jose" = "Leclerc, José",
+                                   "Estevez, Carlos" = "Estévez, Carlos", "Machado, Andres" = "Machado, Andrés",
+                                   "Rios, Yacksel" = "Ríos, Yacksel", "Loaisiga, Jonathan" = "Loáisiga, Jonathan",
+                                   "Hernandez, Jonathan" = "Hernández, Jonathan", "Rodriguez, Jose" = "Rodríguez, José",
+                                   "Rodriguez, Joely" = "Rodríguez, Joely", "Hernandez, Yonny" = "Hernández, Yonny", 
+                                   "Mejia, Humberto" = "Mejía, Humberto", "Mejia, J.C." = "Mejía, J.C.",
+                                   "Bautista, Felix" = "Bautista, Félix", "Marte, Jose" = "Marte, José",
+                                   "Frias, Luis" = "Frías, Luis", "Soriano, Jose" = "Soriano, José", "Gomez, Yoendrys" = "Gómez, Yoendrys",
+                                   "Avilan, Luis" = "Avilán, Luis", "Perez, Oliver" = "Pérez, Oliver", "Quijada, Jose" = "Quijada, José",
+                                   "Perez, Cionel" = "Pérez, Cionel", "Hernandez, Darwinzon" = "Hernández, Darwinzon",
+                                   "Banuelos, Manny" = "Bañuelos, Manny", "Elias, Roenis" = "Elías, Roenis", 
+                                   "Garcia, Jarlin" = "García, Jarlín", "Gonzalez, Luis" = "González, Luis",
+                                   "Castillo, Jose" = "Castillo, José", "Suarez, Andrew" = "Suárez, Andrew", 
+                                   "Lopez, Jose" = "Lopez, José", "Lopez, Jorge" = "López, Jorge", "Lopez, Reynaldo" = "López, Reynaldo",
+                                   "Diaz, Edwin" = "Díaz, Edwin", "Jimenez, Joe" = "Jiménez, Joe", "Ramirez, Yefry" = "Ramírez, Yefry",
+                                   "Alcantara, Sergio" = "Alcántara, Sergio", "Ramirez, Roel" = "Ramírez, Roel", 
+                                   "Lopez, Yoan" = "López, Yoan", "Guzman, Jorge" = "Guzmán, Jorge", 
+                                   "Pena, Felix" = "Peña, Félix", "Rodriguez, Richard" = "Rodríguez, Richard",
+                                   "Gonzalez, Chi Chi" = "González, Chi Chi", "Garcia, Deivi" = "García, Deivi",
+                                   "Sanchez, Anibal" = "Sánchez, Aníbal", "Hernandez, Elieser" = "Hernández, Elieser",
+                                   "Garcia, Edgar" = "García, Edgar", "Diaz, Yennsy" = "Díaz, Yennsy",
+                                   "Rosso, Ramon" = "Rosso, Ramón", "Madero, Luis" = "Madero, Luís", 
+                                   "Vizcaino, Arodys" = "Vizcaíno, Arodys", "Arano, Victor" = "Arano, Víctor",
+                                   "A. Ferrer, Jose" = "Ferrer, Jose A.", "Berrios, Jose" = "Berríos, José"),
+         name_year = paste(savant_name_full, "_", as.character(Season)),
+         name_year = gsub("+ _ +", "_", name_year))
+```
+
+Relief Pitchers
+
+Filter to only be relief pitchers
+```{r}
+fanRP <- fan2 %>% 
+  filter(Role == "RP", IP >= 19.10) %>% 
+  # Manually change Luis Garcia (RP) to Luís Garcia
+  mutate(name_year = recode(name_year, "Garcia, Luis_2022" = "García, Luis_2022", "Garcia, Luis_2023" = "García, Luis_2023"))
+```
+
+Calculate Baseball Savant average weighted on-base average (wOBA) for RP
+```{r}
+savant_woba_RP <- savant %>% 
+  mutate(name_year = paste(player_name, "_", as.character(game_year)),
+         name_year = gsub("+ _ +", "_", name_year)) %>% 
+  group_by(role_key, name_year) %>% 
+  summarize(wOBA = mean(woba_value, na.rm = TRUE)) %>% 
+  filter(role_key == "RP", name_year %in% fanRP$name_year)
+```
+
+Add wOBA to fangraphs dataset
+```{r}
+fanRP1 <- fanRP %>% 
+  inner_join(savant_woba_RP, by = "name_year")
+```
+
+Starter data
+
+Filter to only be starting pitchers
+```{r}
+fanSP <- fan2 %>% 
+  filter(Role == "SP", IP >= 8 * 5.1) %>%
+  mutate(name_year = recode(name_year, "Chi Gonzalez, Chi_2021" = "González, Chi Chi_2021", "Hyun Kim, Kwang_2021" = "Kim, Kwang Hyun_2021",
+                            "Jin Ryu, Hyun_2021" = "Ryu, Hyun Jin_2021", "Jin Ryu, Hyun_2023" = "Ryu, Hyun Jin_2023", 
+                            "L. Ortiz, Luis_2023" = "Ortiz, Luis L._2023"))
+
+```
+
+Calculate Baseball Savant average weighted on-base average (wOBA) for SP
+```{r}
+savant_woba_SP <- savant %>% 
+  mutate(name_year = paste(player_name, "_", as.character(game_year)),
+         name_year = gsub("+ _ +", "_", name_year)) %>% 
+  group_by(role_key, name_year) %>% 
+  summarize(wOBA = mean(woba_value, na.rm = TRUE)) %>% 
+  filter(role_key == "SP", name_year %in% fanSP$name_year)
+```
+
+Add wOBA to fangraphs dataset
+```{r}
+fanSP1 <- fanSP %>% 
+  inner_join(savant_woba_SP, by = "name_year")
+```
+
+Joint dataset with qualified pitchers
+```{r}
+fanP <- rbind(fanSP1, fanRP1)
+```
+
+
+## Linear Regression
+
+Make pitchers name row names
+```{r}
+rownames(fanP) <- make.names(fanP[, 21], unique = TRUE)
+linFan <- fanP %>% 
+  dplyr::select(-c(1:5, 14, 19:22))
+```
+
+Base Model, summary statistics, and correlations
+```{r}
+# Base model
+lmFIP <- lm(FIP ~ ., data = linFan)
+summary(lmFIP)
+
+# Summary Statistics
+linFan %>% sapply(function(x) c(summary = summary(x), sd = sd(x)))
+
+# Correlations between variables
+cor(linFan, use = "complete.obs")
+```
+
+Forward Stepwise
+
+AIC
+```{r}
+# Null Model
+modelFIP0 <- lm(FIP ~ 1, data = linFan)
+
+# Forward AIC
+stepAIC(modelFIP0, scope = list(lower = modelFIP0, upper = lmFIP), k = 2, direction = "forward", trace = FALSE)
+
+# Take the summary of the forward model above
+forward_selected <- lm(formula = FIP ~ wOBA + BABIP + LOB_pct + BB_pct + Barrel_pct + 
+                         K_pct + LA + GB_to_FB, data = linFan)
+
+summary(forward_selected)
+
+# Hypothesis test: t-Test to test significance of variables
+# H0: GB_to_FB = 0 vs. Ha: GB_to_FB != 0
+forward_selected_1 <- lm(formula = FIP ~ wOBA + BABIP + LOB_pct + BB_pct + Barrel_pct + 
+                           K_pct + LA, data = linFan)
+
+summary(forward_selected_1)
+
+# Conclusion: Do no reject H0; there is not significant evidence to support that GB_to_FB is a significant variable
+```
+
+BIC
+```{r}
+# Forward BIC
+stepAIC(modelFIP0, scope = list(lower = modelFIP0, upper = lmFIP), k = log(nrow(linFan)), direction = "forward", trace = FALSE)
+
+# Take the summary of the forward model above
+forward_selected_BIC <- lm(formula = FIP ~ wOBA + BABIP + LOB_pct + BB_pct + Barrel_pct + 
+                             K_pct + LA, data = linFan)
+
+summary(forward_selected_BIC)
+```
+
+Backward Stepwise
+AIC
+```{r}
+# Backward AIC 
+stepAIC(lmFIP, scope = list(lower = modelFIP0, upper = lmFIP), k = 2, direction = "backward", trace = FALSE)
+
+# Take the summary of the forward model above
+backwards_selected <- lm(formula = FIP ~ K_pct + BB_pct + BABIP + LOB_pct + GB_to_FB + 
+                           LA + Barrel_pct + wOBA, data = linFan)
+
+summary(backwards_selected)
+```
+
+BIC
+```{r}
+# Backward BIC
+stepAIC(lmFIP, scope = list(lower = modelFIP0, upper = lmFIP), k = log(nrow(linFan)), direction = "backward", trace = FALSE)
+
+# Take the summary of the forward model above
+backwards_selected_BIC <- lm(formula = FIP ~ K_pct + BB_pct + BABIP + LOB_pct + LA + Barrel_pct + 
+                               wOBA, data = linFan)
+
+summary(backwards_selected_BIC)
+```
+
+
+## Decision Tree
+
+Create factor variable (Role) and select variables deemed significant by linear regression
+```{r}
+fanP1 <- fanP %>% 
+  mutate(Role = factor(Role, levels = c("SP", "RP"))) %>% 
+  dplyr::select(-c(1:2, 4:5, 10:15, 18:22))
+```
+
+Shuffle Data
+```{r}
+# Set seed
+set.seed(2024)
+
+# Shuffle the data using sample()
+shuffle <- sample(1:nrow(fanP1))
+
+# Apply function to dataset to shuffle the rows
+fanP2 <- fanP1[shuffle, ]
+
+## Split the data
+# 82 rows for training
+s <- sample(nrow(fanP2), nrow(fanP2)*.8)
+
+# Apply to fanP2 to create training and test data
+train <- fanP2[s, ]
+test <- fanP2[-s, ]
+```
+
+Decision Tree Classifier
+```{r}
+fit <- rpart(Role ~ ., data = train, method = "class")
+
+# Plot the tree
+rpart.plot(fit, type = 4, extra = 6, branch.lty = 3,
+           box.palette = "RdYlGn", cex = 0.60)
+```
+
+Predict and Confusion Matrix
+```{r}
+# Predict function
+predict_test <- predict(fit, test, type = 'class')
+predict_test %>% head()
+
+# Confusion matrix
+confusionMatrix(as.factor(test$Role), predict_test)
+```
+
+
+## k-folds validation to validate model
+```{r}
+set.seed(2003)
+split_model <- createDataPartition(y = train$Role,    # Split on survived
+                                   list = FALSE,      # Return indexes as a vector
+                                   p = 0.80,            # 75% of data in the training set
+                                   times = 1)           # Make 1 split
+
+training_set <- train[split_model,]     # Get the new training set
+validation_set <- train[-split_model,]  # Get the validation set
+
+nrow(training_set)/nrow(train)      # Check proportion in each partition
+nrow(validation_set)/nrow(train)
+```
+Perform cross validation with caret
+```{r}
+train$Role <- factor(train$Role, levels = c("SP", "RP"), labels = c("SP", "RP")) # Convert target to factor
+
+# Create a trainControl object to control how the train function creates the model
+train_control <- trainControl(method = "repeatedcv",   # Use cross validation
+                              number = 10,             # Use 10 partitions
+                              repeats = 2)             # Repeat 2 times
+
+# Set required parameters for the model type we are using
+tune_grid = expand.grid(cp = c(0.001))
+
+
+# Use the train() function to create the model
+validated_tree <- train(Role ~ .,
+                        data = train,                  # Data set
+                        method = "rpart",              # Model type (decision tree)
+                        trControl = train_control,     # Model control options
+                        tuneGrid = tune_grid,          # Required model parameters
+                        maxdepth = 5,                  # Additional parameters
+                        minbucket = 5)      
+
+# View a summary of the model
+validated_tree         
+```
+
+
+Looking at pitchers who were not predicted correctly
+```{r}
+# Rownames to column
+test1 <- tibble::rownames_to_column(test, "Name")
+predict_test1 <- tibble::rownames_to_column(as.data.frame(predict_test), "Name")
+```
+
+2023 Pitchers who were not predicted correctly
+```{r}
+pitchers2023 <- test1 %>% 
+  inner_join(predict_test1, by = "Name") %>% 
+  mutate(predicted = predict_test) %>% 
+  filter(str_like(Name, "%2023"), Role != predict_test) %>% 
+  dplyr::select(-predict_test)
+```
+
+Averages
+```{r}
+# Total averages
+print("Averages From 2021-23")
+colMeans(fanP1[2:8])
+cat("\n")
+
+
+# SP means
+print("Starting Pitcher Averages From 2021-23")
+colMeans(fanSP1 %>% dplyr::select(K_pct, BB_pct, BABIP, LOB_pct, LA, Barrel_pct, wOBA))
+cat("\n")
+
+# RP means
+print("Relief Pitcher Averages From 2021-23")
+colMeans(fanRP1 %>% dplyr::select(K_pct, BB_pct, BABIP, LOB_pct, LA, Barrel_pct, wOBA))
+cat("\n")
+```
+
+Chosen Players
+```{r}
+color_set <- c("#f7c844","#429460","#2e6d9e")
+inverse_color_set <- c("#2e6d9e", "#429460", "#f7c844")
+
+## Pacers Strengths/Weaknesses
+pitchers2023 %>%
+  dplyr::select(Name, K_pct, BB_pct, BABIP, LOB_pct, LA, Barrel_pct, wOBA) %>%
+  filter(Name %in% c("Snell..Blake_2023", "González..Victor_2023", "Matz..Steven_2023")) %>% 
+  reactable(.,
+            pagination = FALSE,
+            highlight = TRUE,
+            striped = TRUE,
+            defaultSorted = "Name",
+            defaultSortOrder = "asc",
+            theme = espn(),
+            defaultColDef = colDef(align = "left"),
+            columns = list(
+              Name = colDef(maxWidth = 300),
+              K_pct = colDef(name = "K%", align = "center", maxWidth = 130, cell = color_tiles(., colors = color_set)),
+              BB_pct = colDef(name = "BB%", align = "center", maxWidth = 130, cell = color_tiles(., colors = inverse_color_set)),
+              BABIP = colDef(name = "BABIP",align = "center", maxWidth = 130, cell = color_tiles(., colors = color_set)),
+              LOB_pct = colDef(name = "LOB%", align = "center", maxWidth = 130, cell = color_tiles(., colors = color_set)),
+              LA = colDef(name = "Launch Angle", align = "center", maxWidth = 130, cell = color_tiles(., colors = color_set)),
+              Barrel_pct = colDef(name = "Barrel%", align = "center", maxWidth = 130, cell = color_tiles(., colors = color_set)),
+              wOBA = colDef(name = "wOBA", align = "center", maxWidth = 130, cell = color_tiles(., colors = inverse_color_set))
+            )) -> chosenPitchers
+
+chosenPitchers
+```
+
+
+
+
+
+
+
+
